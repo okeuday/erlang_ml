@@ -45,7 +45,7 @@
  * Erlang Binary Term Format Encoding/Decoding
  *)
 
-module OtpErlangPid_ :
+module Pid :
   sig
     type t = {
       node_tag : int;
@@ -55,7 +55,7 @@ module OtpErlangPid_ :
       creation : int;
     }
   end
-module OtpErlangPort_ :
+module Port :
   sig
     type t = {
       node_tag : int;
@@ -64,7 +64,7 @@ module OtpErlangPort_ :
       creation : int;
     }
   end
-module OtpErlangReference_ :
+module Reference :
   sig
     type t = {
       node_tag : int;
@@ -73,7 +73,7 @@ module OtpErlangReference_ :
       creation : int;
     }
   end
-module OtpErlangFunction_ :
+module Function :
   sig
     type t = {
       tag : int;
@@ -96,15 +96,17 @@ type t =
   | OtpErlangListImproper of t list
   | OtpErlangTuple of t list
   | OtpErlangMap of (t, t) Hashtbl.t
-  | OtpErlangPid of OtpErlangPid_.t
-  | OtpErlangPort of OtpErlangPort_.t
-  | OtpErlangReference of OtpErlangReference_.t
-  | OtpErlangFunction of OtpErlangFunction_.t
+  | OtpErlangPid of Pid.t
+  | OtpErlangPort of Port.t
+  | OtpErlangReference of Reference.t
+  | OtpErlangFunction of Function.t
 
-(** Decode Erlang terms within binary data into Ocaml types *)
+(** Decode Erlang terms within binary data into OCaml types *)
 val binary_to_term : string -> (t, string) result
-(** Encode Ocaml types into Erlang terms in binary data *)
+(** Encode OCaml types into Erlang terms in binary data *)
 val term_to_binary : t -> (string, string) result
+(** Convert the OCaml Erlang type to a string *)
+val t_to_string : t -> string
 
 (**/**)
 (* begin section ignored by ocamldoc *)
