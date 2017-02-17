@@ -47,7 +47,7 @@
 
 module Pid :
   sig
-    type t = {
+    type t = private {
       node_tag : int;
       node : string;
       id : string;
@@ -57,7 +57,7 @@ module Pid :
   end
 module Port :
   sig
-    type t = {
+    type t = private {
       node_tag : int;
       node : string;
       id : string;
@@ -66,7 +66,7 @@ module Port :
   end
 module Reference :
   sig
-    type t = {
+    type t = private {
       node_tag : int;
       node : string;
       id : string;
@@ -75,7 +75,7 @@ module Reference :
   end
 module Function :
   sig
-    type t = {
+    type t = private {
       tag : int;
       value : string;
     }
