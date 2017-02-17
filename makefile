@@ -1,7 +1,7 @@
 #-*-Mode:make;coding:utf-8;tab-width:4;c-basic-offset:4-*-
 # ex: set ft=make fenc=utf-8 sts=4 ts=4 sw=4 noet nomod:
 
-OCAMLFLAGS=-w @A
+OCAMLFLAGS=-safe-string -w @A
 
 DEPS=\
      nums.cmxa \
@@ -17,7 +17,7 @@ clean:
 	rm -f test *.cmi *.cmx *.o 
 
 %.cmi: %.mli
-	ocamlc -o $@ -c $<
+	ocamlc $(OCAMLFLAGS) -o $@ -c $<
 
 %.cmx: %.ml
 	ocamlopt $(OCAMLFLAGS) -o $@ -c $<

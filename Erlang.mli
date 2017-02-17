@@ -103,8 +103,10 @@ type t =
 
 (** Decode Erlang terms within binary data into OCaml types *)
 val binary_to_term : string -> (t, string) result
+
 (** Encode OCaml types into Erlang terms in binary data *)
 val term_to_binary : t -> (string, string) result
+
 (** Convert the OCaml Erlang type to a string *)
 val t_to_string : t -> string
 
