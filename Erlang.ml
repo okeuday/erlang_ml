@@ -113,8 +113,8 @@ module Function = struct
     {tag; value}
 end
 type t =
-    OtpErlangIntegerSmall of int
-  | OtpErlangIntegerLarge of Big_int.big_int
+    OtpErlangInteger of int
+  | OtpErlangIntegerBig of Big_int.big_int
   | OtpErlangFloat of float
   | OtpErlangAtom of string
   | OtpErlangAtomUTF8 of string
@@ -195,9 +195,9 @@ let unpack_integer i binary : t =
     )
   in
   if byte0 > min_int lsr 24 then
-    OtpErlangIntegerLarge (Big_int.big_int_of_int32 value)
+    OtpErlangIntegerBig (Big_int.big_int_of_int32 value)
   else
-    OtpErlangIntegerSmall (Int32.to_int value)
+    OtpErlangInteger (Int32.to_int value)
 
 let unpack_double i binary : float =
   let byte0 = Int64.of_int (int_of_char binary.[i])
@@ -298,7 +298,7 @@ let rec binary_to_term_ i binary : (int, t, string) result2 =
   else if tag = tag_atom_cache_ref then
     Ok2 (i0 + 1, OtpErlangAtomCacheRef (int_of_char binary.[i0]))
   else if tag = tag_small_integer_ext then
-    Ok2 (i0 + 1, OtpErlangIntegerSmall (int_of_char binary.[i0]))
+    Ok2 (i0 + 1, OtpErlangInteger (int_of_char binary.[i0]))
   else if tag = tag_integer_ext then
     Ok2 (i0 + 4, unpack_integer i0 binary)
   else if tag = tag_float_ext then
@@ -422,7 +422,7 @@ let rec binary_to_term_ i binary : (int, t, string) result2 =
       else
         bignum
       and i2 = i1 + 1 in
-      Ok2 (i2 + j, OtpErlangIntegerLarge (bignum_result))
+      Ok2 (i2 + j, OtpErlangIntegerBig (bignum_result))
   else if tag = tag_new_fun_ext then
     match unpack_uint32 i0 binary with
     | Error2 (error) ->
@@ -444,7 +444,7 @@ let rec binary_to_term_ i binary : (int, t, string) result2 =
         Error2 (parse_error "invalid small integer tag")
       | Ok3 (i2, _, _) ->
         let i3 = i2 + 2 in
-        let value = String.sub binary i0 (i3 - i0 + 1) in
+        let value = String.sub binary i0 (i3 - i0) in
         Ok2 (i3, OtpErlangFunction (
           Function.make
             ~tag:tag ~value:value))
@@ -518,7 +518,7 @@ let rec binary_to_term_ i binary : (int, t, string) result2 =
               | Error2 (error) ->
                 Error2 (error)
               | Ok2 (i6, _) -> (* free *)
-                let value = String.sub binary i0 (i6 - i0 + 1) in
+                let value = String.sub binary i0 (i6 - i0) in
                 Ok2 (i6, OtpErlangFunction (
                   Function.make
                     ~tag:tag ~value:value))
@@ -552,7 +552,7 @@ and binary_to_integer i binary : (int, t, string) result2 =
   let tag = int_of_char binary.[i]
   and i0 = i + 1 in
   if tag = tag_small_integer_ext then
-    Ok2 (i0 + 1, OtpErlangIntegerSmall (int_of_char binary.[i0]))
+    Ok2 (i0 + 1, OtpErlangInteger (int_of_char binary.[i0]))
   else if tag = tag_integer_ext then
     Ok2 (i0 + 4, unpack_integer i0 binary)
   else
@@ -585,29 +585,29 @@ and binary_to_atom i binary : (int, int, string, string) result3 =
   if tag = tag_atom_ext then
     let j = unpack_uint16 i0 binary
     and i1 = i0 + 2 in
-    Ok3 (i1 + j, tag, String.sub binary i1 j)
+    Ok3 (i1 + j, tag, String.sub binary i0 (2 + j))
   else if tag = tag_atom_cache_ref then
     Ok3 (i0 + 1, tag, String.make 1 binary.[i0])
   else if tag = tag_small_atom_ext then
     let j = int_of_char binary.[i]
     and i1 = i0 + 1 in
-    Ok3 (i1 + j, tag, String.sub binary i1 j)
+    Ok3 (i1 + j, tag, String.sub binary i0 (1 + j))
   else if tag = tag_atom_utf8_ext then
     let j = unpack_uint16 i0 binary
     and i1 = i0 + 2 in
-    Ok3 (i1 + j, tag, String.sub binary i1 j)
+    Ok3 (i1 + j, tag, String.sub binary i0 (2 + j))
   else if tag = tag_small_atom_utf8_ext then
     let j = int_of_char binary.[i]
     and i1 = i0 + 1 in
-    Ok3 (i1 + j, tag, String.sub binary i1 j)
+    Ok3 (i1 + j, tag, String.sub binary i0 (1 + j))
   else
     Error3 (parse_error "invalid atom tag")
 
 let rec term_to_binary_ term buffer : (Buffer.t, string) result =
   match term with
-  | OtpErlangIntegerSmall (value) ->
+  | OtpErlangInteger (value) ->
     integer_to_binary value buffer
-  | OtpErlangIntegerLarge (value) ->
+  | OtpErlangIntegerBig (value) ->
     bignum_to_binary value buffer
   | OtpErlangFloat (value) ->
     float_to_binary value buffer
@@ -911,10 +911,10 @@ let term_to_binary (term : t) : (string, string) result =
 
 let rec t_to_string (term : t) : string =
   match term with
-  | OtpErlangIntegerSmall (value) ->
-    "OtpErlangIntegerSmall(" ^ (string_of_int value) ^ ")"
-  | OtpErlangIntegerLarge (value) ->
-    "OtpErlangIntegerLarge(" ^ (Big_int.string_of_big_int value) ^ ")"
+  | OtpErlangInteger (value) ->
+    "OtpErlangInteger(" ^ (string_of_int value) ^ ")"
+  | OtpErlangIntegerBig (value) ->
+    "OtpErlangIntegerBig(" ^ (Big_int.string_of_big_int value) ^ ")"
   | OtpErlangFloat (value) ->
     "OtpErlangFloat(" ^ (string_of_float value) ^ ")"
   | OtpErlangAtom (value) ->
@@ -942,14 +942,29 @@ let rec t_to_string (term : t) : string =
     "OtpErlangTuple(" ^ (sequence_to_string value) ^ ")"
   | OtpErlangMap (value) ->
     "OtpErlangMap(" ^ (map_to_string value) ^ ")"
-  | OtpErlangPid _ ->
-    "OtpErlangPid()"
-  | OtpErlangPort _ ->
-    "OtpErlangPort()"
-  | OtpErlangReference _ ->
-    "OtpErlangReference()"
-  | OtpErlangFunction _ ->
-    "OtpErlangFunction()"
+  | OtpErlangPid ({Pid.node_tag; node; id; serial; creation}) ->
+    "OtpErlangPid(" ^
+      "node_tag:" ^ (string_of_int node_tag) ^ "; " ^
+      "node:\"" ^ (String.escaped node) ^ "\"; " ^
+      "id:\"" ^ (String.escaped id) ^ "\"; " ^
+      "serial:\"" ^ (String.escaped serial) ^ "\"; " ^
+      "creation:" ^ (string_of_int creation) ^ ")"
+  | OtpErlangPort ({Port.node_tag; node; id; creation}) ->
+    "OtpErlangPort(" ^
+      "node_tag:" ^ (string_of_int node_tag) ^ "; " ^
+      "node:\"" ^ (String.escaped node) ^ "\"; " ^
+      "id:\"" ^ (String.escaped id) ^ "\"; " ^
+      "creation:" ^ (string_of_int creation) ^ ")"
+  | OtpErlangReference ({Reference.node_tag; node; id; creation}) ->
+    "OtpErlangReference(" ^
+      "node_tag:" ^ (string_of_int node_tag) ^ "; " ^
+      "node:\"" ^ (String.escaped node) ^ "\"; " ^
+      "id:\"" ^ (String.escaped id) ^ "\"; " ^
+      "creation:" ^ (string_of_int creation) ^ ")"
+  | OtpErlangFunction ({Function.tag; value}) ->
+    "OtpErlangFunction(" ^
+      "tag:" ^ (string_of_int tag) ^ "; " ^
+      "value:\"" ^ (String.escaped value) ^ ")"
 
 and sequence_to_string (terms : t list) : string =
   let buffer = Buffer.create (32 * (List.length terms)) in
@@ -1000,14 +1015,6 @@ let binary_ok (value : (string, string) result) : string =
   | Error (error) ->
       raise (BinaryOk error)
 
-exception BinaryError of string
-let binary_error (value : (string, string) result) : string =
-  match value with
-  | Ok (binary) ->
-      raise (BinaryError binary)
-  | Error (error) ->
-      error
-
 let register_printers () =
   Printexc.register_printer (function
     | TermOk e ->
@@ -1016,8 +1023,6 @@ let register_printers () =
       Some ("term_error " ^ e)
     | BinaryOk e ->
       Some ("binary_ok " ^ e)
-    | BinaryError e ->
-      Some ("binary_error " ^ e)
     | _ ->
       None
   )
@@ -1062,6 +1067,51 @@ let register_printers () =
   DAMAGE.
 
  *)
+
+let rec string_create_impl size s b =
+  if size = 0 then
+    Buffer.contents b
+  else (
+    Buffer.add_string b s ;
+    string_create_impl (size - 1) s b)
+and string_create size s =
+  string_create_impl size s (Buffer.create (size * (String.length s)))
+
+let test_pid () =
+  let pid1 = OtpErlangPid (Pid.make
+    ~node_tag:100
+    ~node:"\x00\x0d\x6e\x6f\x6e\x6f\x64\x65\x40\x6e\x6f\x68\x6f\x73\x74"
+    ~id:"\x00\x00\x00\x3b" ~serial:"\x00\x00\x00\x00" ~creation:0)
+  and binary = "\x83\x67\x64\x00\x0D\x6E\x6F\x6E\x6F\x64\x65\x40\x6E\x6F" ^
+    "\x68\x6F\x73\x74\x00\x00\x00\x3B\x00\x00\x00\x00\x00" in
+  assert ((binary_ok (term_to_binary pid1)) = binary) ;
+  assert ((term_ok (binary_to_term binary)) = pid1) ;
+  true
+
+let test_function () =
+  let function1 = OtpErlangFunction (Function.make
+    ~tag:113
+    ~value:(
+      "\x64\x00\x05\x6c\x69\x73\x74\x73\x64" ^
+      "\x00\x06\x6d\x65\x6d\x62\x65\x72\x61\x02")
+    )
+  and binary = "\x83\x71\x64\x00\x05\x6C\x69\x73\x74\x73\x64\x00\x06\x6D" ^
+    "\x65\x6D\x62\x65\x72\x61\x02" in
+  assert ((binary_ok (term_to_binary function1)) = binary) ;
+  assert ((term_ok (binary_to_term binary)) = function1) ;
+  true
+
+let test_reference () =
+  let reference1 = OtpErlangReference (Reference.make
+    ~node_tag:100
+    ~node:"\x00\x0d\x6e\x6f\x6e\x6f\x64\x65\x40\x6e\x6f\x68\x6f\x73\x74"
+    ~id:"\x00\x00\x00\xaf\x00\x00\x00\x03\x00\x00\x00\x00" ~creation:0)
+  and binary = "\x83\x72\x00\x03\x64\x00\x0D\x6E\x6F\x6E\x6F\x64\x65\x40" ^
+    "\x6E\x6F\x68\x6F\x73\x74\x00\x00\x00\x00\xAF\x00\x00\x00\x03\x00\x00" ^
+    "\x00\x00" in
+  assert ((binary_ok (term_to_binary reference1)) = binary) ;
+  assert ((term_ok (binary_to_term binary)) = reference1) ;
+  true
 
 let test_decode_basic () =
   assert (
@@ -1214,10 +1264,10 @@ let test_decode_small_integer () =
     "parse_error: missing data") ;
   assert (
     (term_ok (binary_to_term "\x83a\x00")) =
-    OtpErlangIntegerSmall (0)) ;
+    OtpErlangInteger (0)) ;
   assert (
     (term_ok (binary_to_term "\x83a\xff")) =
-    OtpErlangIntegerSmall (255)) ;
+    OtpErlangInteger (255)) ;
   true
 
 let test_decode_integer () =
@@ -1235,17 +1285,17 @@ let test_decode_integer () =
     "parse_error: missing data") ;
   assert (
     (term_ok (binary_to_term "\x83b\x00\x00\x00\x00")) =
-    OtpErlangIntegerSmall (0)) ;
+    OtpErlangInteger (0)) ;
   assert (
     (term_ok (binary_to_term "\x83b\x7f\xff\xff\xff")) =
-    OtpErlangIntegerSmall (Int32.to_int Int32.max_int)) ;
+    OtpErlangInteger (Int32.to_int Int32.max_int)) ;
   assert (
     (term_ok (binary_to_term "\x83b\x80\x00\x00\x00")) =
-    OtpErlangIntegerSmall (Int32.to_int Int32.min_int)) ;
+    OtpErlangInteger (Int32.to_int Int32.min_int)) ;
   assert (
     (term_ok (binary_to_term "\x83b\xff\xff\xff\xff")) =
-    OtpErlangIntegerSmall (-1)) ;
-  let max_int_plus_1 = OtpErlangIntegerLarge (
+    OtpErlangInteger (-1)) ;
+  let max_int_plus_1 = OtpErlangIntegerBig (
     Big_int.big_int_of_string "4611686018427387904")
   and max_int_plus_1_check = term_ok
     (binary_to_term "\x83n\x08\x00\x00\x00\x00\x00\x00\x00\x00@") in
@@ -1321,20 +1371,20 @@ let test_decode_small_big_integer () =
   assert (
     (term_error (binary_to_term "\x83n\x01\x00")) =
     "parse_error: missing data") ;
-  let zero = OtpErlangIntegerLarge (Big_int.zero_big_int)
+  let zero = OtpErlangIntegerBig (Big_int.zero_big_int)
   and zero_check = term_ok
     (binary_to_term "\x83n\x00\x00") in
   assert (
     (t_to_string zero) =
     (t_to_string zero_check)) ;
-  let bigint1 = OtpErlangIntegerLarge (
+  let bigint1 = OtpErlangIntegerBig (
     Big_int.big_int_of_string "6618611909121")
   and bigint1_check = term_ok
     (binary_to_term "\x83n\x06\x00\x01\x02\x03\x04\x05\x06") in
   assert (
     (t_to_string bigint1) =
     (t_to_string bigint1_check)) ;
-  let bigint2 = OtpErlangIntegerLarge (
+  let bigint2 = OtpErlangIntegerBig (
     Big_int.big_int_of_string "-6618611909121")
   and bigint2_check = term_ok
     (binary_to_term "\x83n\x06\x01\x01\x02\x03\x04\x05\x06") in
@@ -1362,20 +1412,20 @@ let test_decode_large_big_integer () =
   assert (
     (term_error (binary_to_term "\x83o\x00\x00\x00\x01\x00")) =
     "parse_error: missing data") ;
-  let zero = OtpErlangIntegerLarge (Big_int.zero_big_int)
+  let zero = OtpErlangIntegerBig (Big_int.zero_big_int)
   and zero_check = term_ok
     (binary_to_term "\x83o\x00\x00\x00\x00\x00") in
   assert (
     (t_to_string zero) =
     (t_to_string zero_check)) ;
-  let bigint1 = OtpErlangIntegerLarge (
+  let bigint1 = OtpErlangIntegerBig (
     Big_int.big_int_of_string "6618611909121")
   and bigint1_check = term_ok
     (binary_to_term "\x83o\x00\x00\x00\x06\x00\x01\x02\x03\x04\x05\x06") in
   assert (
     (t_to_string bigint1) =
     (t_to_string bigint1_check)) ;
-  let bigint2 = OtpErlangIntegerLarge (
+  let bigint2 = OtpErlangIntegerBig (
     Big_int.big_int_of_string "-6618611909121")
   and bigint2_check = term_ok
     (binary_to_term "\x83o\x00\x00\x00\x06\x01\x01\x02\x03\x04\x05\x06") in
@@ -1397,14 +1447,6 @@ let test_encode_tuple () =
       OtpErlangTuple (l)
     else
       tuple_create (size - 1) ([OtpErlangTuple ([])] @ l) in
-  let rec string_create_impl size s b =
-    if size = 0 then
-      Buffer.contents b
-    else (
-      Buffer.add_string b s ;
-      string_create_impl (size - 1) s b)
-  and string_create size s =
-    string_create_impl size s (Buffer.create (size * (String.length s))) in
   assert (
     (binary_ok (term_to_binary (tuple_create 255 []))) =
     "\x83h\xff" ^ (string_create 255 "h\x00")) ;
@@ -1449,44 +1491,223 @@ let test_encode_list_basic () =
   assert (
     (binary_ok (term_to_binary (OtpErlangString ("")))) =
     "\x83\x6A") ;
-  (* ... *)
+  assert (
+    (binary_ok (term_to_binary (OtpErlangList ([OtpErlangString("")])))) =
+    "\x83\x6C\x00\x00\x00\x01\x6A\x6A") ;
+  assert (
+    (binary_ok (term_to_binary (OtpErlangList ([OtpErlangInteger (1)])))) =
+    "\x83\x6C\x00\x00\x00\x01\x61\x01\x6A") ;
+  assert (
+    (binary_ok (term_to_binary (OtpErlangList ([OtpErlangInteger (255)])))) =
+    "\x83\x6C\x00\x00\x00\x01\x61\xFF\x6A") ;
+  assert (
+    (binary_ok (term_to_binary (OtpErlangList ([OtpErlangInteger (256)])))) =
+    "\x83\x6C\x00\x00\x00\x01\x62\x00\x00\x01\x00\x6A") ;
+  let integer1 = OtpErlangInteger (Int32.to_int Int32.max_int) in
+  assert (
+    (binary_ok (term_to_binary (OtpErlangList ([integer1])))) =
+    "\x83\x6C\x00\x00\x00\x01\x62\x7F\xFF\xFF\xFF\x6A") ;
+  let bigint1 = OtpErlangIntegerBig (
+    Big_int.add_int_big_int 1 (Big_int.big_int_of_int32 Int32.max_int)) in
+  assert (
+    (binary_ok (term_to_binary (OtpErlangList ([bigint1])))) =
+    "\x83\x6C\x00\x00\x00\x01\x6E\x04\x00\x00\x00\x00\x80\x6A") ;
+  assert (
+    (binary_ok (term_to_binary (OtpErlangList ([OtpErlangInteger (0)])))) =
+    "\x83\x6C\x00\x00\x00\x01\x61\x00\x6A") ;
+  assert (
+    (binary_ok (term_to_binary (OtpErlangList ([OtpErlangInteger (-1)])))) =
+    "\x83\x6C\x00\x00\x00\x01\x62\xFF\xFF\xFF\xFF\x6A") ;
+  assert (
+    (binary_ok (term_to_binary (OtpErlangList ([OtpErlangInteger (-256)])))) =
+    "\x83\x6C\x00\x00\x00\x01\x62\xFF\xFF\xFF\x00\x6A") ;
+  assert (
+    (binary_ok (term_to_binary (OtpErlangList ([OtpErlangInteger (-257)])))) =
+    "\x83\x6C\x00\x00\x00\x01\x62\xFF\xFF\xFE\xFF\x6A") ;
+  let integer2 = OtpErlangInteger (Int32.to_int Int32.min_int) in
+  assert (
+    (binary_ok (term_to_binary (OtpErlangList ([integer2])))) =
+    "\x83\x6C\x00\x00\x00\x01\x62\x80\x00\x00\x00\x6A") ;
+  let bigint2 = OtpErlangIntegerBig (
+    Big_int.add_int_big_int (-1) (Big_int.big_int_of_int32 Int32.min_int)) in
+  assert (
+    (binary_ok (term_to_binary (OtpErlangList ([bigint2])))) =
+    "\x83\x6C\x00\x00\x00\x01\x6E\x04\x01\x01\x00\x00\x80\x6A") ;
+  assert (
+    (binary_ok (term_to_binary (OtpErlangList ([OtpErlangString ("test")])))) =
+    "\x83\x6C\x00\x00\x00\x01\x6B\x00\x04\x74\x65\x73\x74\x6A") ;
+  let list1 = OtpErlangList ([
+    OtpErlangInteger (373); OtpErlangInteger (455)]) in
+  assert (
+    (binary_ok (term_to_binary list1)) =
+    "\x83\x6C\x00\x00\x00\x02\x62\x00\x00\x01\x75\x62\x00\x00\x01\xC7\x6A") ;
+  assert (
+    (binary_ok (term_to_binary (OtpErlangList ([OtpErlangList ([])])))) =
+    "\x83\x6C\x00\x00\x00\x01\x6A\x6A") ;
+  let list2 = OtpErlangList ([OtpErlangList ([]); OtpErlangList ([])]) in
+  assert (
+    (binary_ok (term_to_binary list2)) =
+    "\x83\x6C\x00\x00\x00\x02\x6A\x6A\x6A") ;
+  let list3 = OtpErlangList ([OtpErlangList ([
+    OtpErlangString ("this"); OtpErlangString ("is")]);
+    OtpErlangList ([OtpErlangList ([OtpErlangString ("a")])]);
+    OtpErlangString ("test")]) in
+  assert (
+    (binary_ok (term_to_binary list3)) =
+    "\x83\x6C\x00\x00\x00\x03\x6C\x00\x00\x00\x02\x6B\x00\x04\x74\x68" ^
+    "\x69\x73\x6B\x00\x02\x69\x73\x6A\x6C\x00\x00\x00\x01\x6C\x00\x00" ^
+    "\x00\x01\x6B\x00\x01\x61\x6A\x6A\x6B\x00\x04\x74\x65\x73\x74\x6A") ;
   true
 
-(* ... *)
+let test_encode_list () =
+  assert (
+    (binary_ok (term_to_binary (OtpErlangList ([OtpErlangList ([])])))) =
+    "\x83l\x00\x00\x00\x01jj") ;
+  let list1 = OtpErlangList ([
+    OtpErlangList ([]); OtpErlangList ([]); OtpErlangList ([]);
+    OtpErlangList ([]); OtpErlangList ([])]) in
+  assert (
+    (binary_ok (term_to_binary list1)) =
+    "\x83l\x00\x00\x00\x05jjjjjj") ;
+  true
+
+let test_encode_improper_list () =
+  let list1 = OtpErlangListImproper ([
+    OtpErlangTuple ([]); OtpErlangTuple ([])]) in
+  assert (
+    (binary_ok (term_to_binary list1)) =
+    "\x83l\x00\x00\x00\x01h\x00h\x00") ;
+  let list2 = OtpErlangListImproper ([
+    OtpErlangInteger (0); OtpErlangInteger (1)]) in
+  assert (
+    (binary_ok (term_to_binary list2)) =
+    "\x83l\x00\x00\x00\x01a\x00a\x01") ;
+  true
+
+let test_encode_unicode () =
+  assert (
+    (binary_ok (term_to_binary (OtpErlangString ("")))) =
+    "\x83j") ;
+  assert (
+    (binary_ok (term_to_binary (OtpErlangString ("test")))) =
+    "\x83k\x00\x04test") ;
+  assert (
+    (binary_ok (term_to_binary (OtpErlangString ("\x00\xc3\xbf")))) =
+    "\x83k\x00\x03\x00\xc3\xbf") ;
+  assert (
+    (binary_ok (term_to_binary (OtpErlangString ("\xc4\x80")))) =
+    "\x83k\x00\x02\xc4\x80") ;
+  let string1 = OtpErlangString ("\xd1\x82\xd0\xb5\xd1\x81\xd1\x82") in
+  assert (
+    (binary_ok (term_to_binary string1)) =
+    "\x83k\x00\x08\xd1\x82\xd0\xb5\xd1\x81\xd1\x82") ;
+  let string2 = OtpErlangString (string_create 65536 "\xd0\x90") in
+  assert (
+    (binary_ok (term_to_binary string2)) =
+    "\x83l\x00\x02\x00\x00" ^ (string_create 65536 "a\xd0a\x90") ^ "j") ;
+  true
+
+let test_encode_atom () =
+  assert (
+    (binary_ok (term_to_binary (OtpErlangAtom ("")))) =
+    "\x83s\x00") ;
+  assert (
+    (binary_ok (term_to_binary (OtpErlangAtom ("test")))) =
+    "\x83s\x04test") ;
+  true
+
+let test_encode_string_basic () =
+  assert (
+    (binary_ok (term_to_binary (OtpErlangString ("")))) =
+    "\x83\x6A") ;
+  assert (
+    (binary_ok (term_to_binary (OtpErlangString ("test")))) =
+    "\x83\x6B\x00\x04\x74\x65\x73\x74") ;
+  assert (
+    (binary_ok (term_to_binary (OtpErlangString ("two words")))) =
+    "\x83\x6B\x00\x09\x74\x77\x6F\x20\x77\x6F\x72\x64\x73") ;
+  assert (
+    (binary_ok (term_to_binary (OtpErlangString ("testing multiple words")))) =
+    "\x83\x6B\x00\x16\x74\x65\x73\x74\x69\x6E\x67\x20\x6D\x75\x6C\x74" ^
+    "\x69\x70\x6C\x65\x20\x77\x6F\x72\x64\x73") ;
+  assert (
+    (binary_ok (term_to_binary (OtpErlangString (" ")))) =
+    "\x83\x6B\x00\x01\x20") ;
+  assert (
+    (binary_ok (term_to_binary (OtpErlangString ("  ")))) =
+    "\x83\x6B\x00\x02\x20\x20") ;
+  assert (
+    (binary_ok (term_to_binary (OtpErlangString ("1")))) =
+    "\x83\x6B\x00\x01\x31") ;
+  assert (
+    (binary_ok (term_to_binary (OtpErlangString ("37")))) =
+    "\x83\x6B\x00\x02\x33\x37") ;
+  assert (
+    (binary_ok (term_to_binary (OtpErlangString ("one = 1")))) =
+    "\x83\x6B\x00\x07\x6F\x6E\x65\x20\x3D\x20\x31") ;
+  let string1 = OtpErlangString ("!@#$%^&*()_+-=[]{}\\|;':\",./<>?~`") in
+  assert (
+    (binary_ok (term_to_binary string1)) =
+    "\x83\x6B\x00\x20\x21\x40\x23\x24\x25\x5E\x26\x2A\x28\x29\x5F\x2B" ^
+    "\x2D\x3D\x5B\x5D\x7B\x7D\x5C\x7C\x3B\x27\x3A\x22\x2C\x2E\x2F\x3C" ^
+    "\x3E\x3F\x7E\x60") ;
+  let string2 = OtpErlangString ("\"\x08\x0c\n\r\t\x0bS\x12") in
+  assert (
+    (binary_ok (term_to_binary string2)) =
+    "\x83\x6B\x00\x09\x22\x08\x0C\x0A\x0D\x09\x0B\x53\x12") ;
+  true
+
+let test_encode_string () =
+  assert (
+    (binary_ok (term_to_binary (OtpErlangString ("")))) =
+    "\x83j") ;
+  assert (
+    (binary_ok (term_to_binary (OtpErlangString ("test")))) =
+    "\x83k\x00\x04test") ;
+  true
+
+let test_encode_boolean () =
+  assert (
+    (binary_ok (term_to_binary (OtpErlangAtomBool (true)))) =
+    "\x83s\x04true") ;
+  assert (
+    (binary_ok (term_to_binary (OtpErlangAtomBool (false)))) =
+    "\x83s\x05false") ;
+  true
 
 let test_encode_small_integer () =
   assert (
-    (binary_ok (term_to_binary (OtpErlangIntegerSmall (0)))) =
+    (binary_ok (term_to_binary (OtpErlangInteger (0)))) =
     "\x83a\x00") ;
   assert (
-    (binary_ok (term_to_binary (OtpErlangIntegerSmall (255)))) =
+    (binary_ok (term_to_binary (OtpErlangInteger (255)))) =
     "\x83a\xff") ;
   true
 
 let test_encode_integer () =
   assert (
-    (binary_ok (term_to_binary (OtpErlangIntegerSmall (-1)))) =
+    (binary_ok (term_to_binary (OtpErlangInteger (-1)))) =
     "\x83b\xff\xff\xff\xff") ;
   assert (
     (binary_ok (term_to_binary
-      (OtpErlangIntegerSmall (Int32.to_int Int32.min_int)))) =
+      (OtpErlangInteger (Int32.to_int Int32.min_int)))) =
     "\x83b\x80\x00\x00\x00") ;
   assert (
-    (binary_ok (term_to_binary (OtpErlangIntegerSmall (256)))) =
+    (binary_ok (term_to_binary (OtpErlangInteger (256)))) =
     "\x83b\x00\x00\x01\x00") ;
   assert (
     (binary_ok (term_to_binary
-      (OtpErlangIntegerSmall (Int32.to_int Int32.max_int)))) =
+      (OtpErlangInteger (Int32.to_int Int32.max_int)))) =
     "\x83b\x7f\xff\xff\xff") ;
   true
 
 let test_encode_small_big_integer () =
-  let bigint1 = OtpErlangIntegerLarge (
+  let bigint1 = OtpErlangIntegerBig (
     Big_int.add_int_big_int 1 (Big_int.big_int_of_int32 Int32.max_int)) in
   assert (
     (binary_ok (term_to_binary bigint1)) =
     "\x83n\x04\x00\x00\x00\x00\x80") ;
-  let bigint2 = OtpErlangIntegerLarge (
+  let bigint2 = OtpErlangIntegerBig (
     Big_int.add_int_big_int (-1) (Big_int.big_int_of_int32 Int32.min_int)) in
   assert (
     (binary_ok (term_to_binary bigint2)) =
@@ -1494,12 +1715,12 @@ let test_encode_small_big_integer () =
   true
 
 let test_encode_large_big_integer () =
-  let bigint1 = OtpErlangIntegerLarge (
+  let bigint1 = OtpErlangIntegerBig (
     Big_int.power_int_positive_int 2 2040) in
   assert (
     (binary_ok (term_to_binary bigint1)) =
     "\x83o\x00\x00\x01\x00\x00" ^ (String.make 255 '\x00') ^ "\x01") ;
-  let bigint2 = OtpErlangIntegerLarge (
+  let bigint2 = OtpErlangIntegerBig (
     Big_int.minus_big_int (Big_int.power_int_positive_int 2 2040)) in
   assert (
     (binary_ok (term_to_binary bigint2)) =
@@ -1524,11 +1745,12 @@ let test_encode_float () =
     "\x83F\xc0\t!\xfbM\x12\xd8J") ;
   true
 
-(* ... *)
-
 let tests =
   register_printers () ;
 [
+  "binary_to_term/term_to_binary (pid)", test_pid;
+  "binary_to_term/term_to_binary (function)", test_function;
+  "binary_to_term/term_to_binary (reference)", test_reference;
   "binary_to_term (basic)", test_decode_basic;
   "binary_to_term (atom)", test_decode_atom;
   "binary_to_term (predefined atom)", test_decode_predefined_atom;
@@ -1547,8 +1769,14 @@ let tests =
   "term_to_binary (tuple)", test_encode_tuple;
   "term_to_binary (empty list)", test_encode_empty_list;
   "term_to_binary (string list)", test_encode_string_list;
-  "term_to_binary (list basic)", test_encode_list_basic;
-
+  "term_to_binary (list basic, 64bit-only)", test_encode_list_basic;
+  "term_to_binary (list)", test_encode_list;
+  "term_to_binary (improper list)", test_encode_improper_list;
+  "term_to_binary (unicode)", test_encode_unicode;
+  "term_to_binary (atom)", test_encode_atom;
+  "term_to_binary (string basic)", test_encode_string_basic;
+  "term_to_binary (string)", test_encode_string;
+  "term_to_binary (boolean)", test_encode_boolean;
   "term_to_binary (small integer)", test_encode_small_integer;
   "term_to_binary (integer, 64bit-only)", test_encode_integer;
   "term_to_binary (small bigint)", test_encode_small_big_integer;

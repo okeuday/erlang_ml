@@ -82,8 +82,8 @@ module Function :
   end
 
 type t =
-    OtpErlangIntegerSmall of int
-  | OtpErlangIntegerLarge of Big_int.big_int
+    OtpErlangInteger of int
+  | OtpErlangIntegerBig of Big_int.big_int
   | OtpErlangFloat of float
   | OtpErlangAtom of string
   | OtpErlangAtomUTF8 of string
