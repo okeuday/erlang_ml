@@ -142,6 +142,8 @@ type ('a,'b,'c,'d) result3 = Ok3 of 'a * 'b * 'c | Error3 of 'd
 
 let list_append l1 l2 = List.rev_append (List.rev l1) l2
 
+exception HashtblExit of string
+
 let valid_uint32_positive (value : int) : bool =
   (Int64.of_int value) <= (Int64.of_string "4294967295")
 
@@ -235,6 +237,12 @@ let unpack_double i binary : float =
       )
     ) byte7
   )
+
+let pack_uint16 (value : int) buffer : unit =
+  let byte0 = (value asr 8) land 0xff
+  and byte1 = value land 0xff in
+  Buffer.add_char buffer (char_of_int byte0) ;
+  Buffer.add_char buffer (char_of_int byte1)
 
 let pack_uint32 (value : int) buffer : unit =
   let byte0 = (value asr 24) land 0xff
@@ -604,37 +612,138 @@ let rec term_to_binary_ term buffer : (Buffer.t, string) result =
   | OtpErlangFloat (value) ->
     float_to_binary value buffer
   | OtpErlangAtom (value) ->
-    Error (output_error "invalid")
+    atom_to_binary value buffer
   | OtpErlangAtomUTF8 (value) ->
-    Error (output_error "invalid")
+    atom_utf8_to_binary value buffer
   | OtpErlangAtomCacheRef (value) ->
-    Error (output_error "invalid")
+    Buffer.add_char buffer (char_of_int tag_atom_cache_ref) ;
+    Buffer.add_char buffer (char_of_int value) ;
+    Ok (buffer)
   | OtpErlangAtomBool (value) ->
-    Error (output_error "invalid")
+    if value then
+      atom_to_binary "true" buffer
+    else
+      atom_to_binary "false" buffer
   | OtpErlangString (value) ->
-    Error (output_error "invalid")
+    string_to_binary value buffer
   | OtpErlangBinary (value) ->
-    Error (output_error "invalid")
+    binary_bits_to_binary value 8 buffer
   | OtpErlangBinaryBits (value, bits) ->
-    Error (output_error "invalid")
+    binary_bits_to_binary value bits buffer
   | OtpErlangList (value) ->
-    Error (output_error "invalid")
+    list_to_binary value false buffer
   | OtpErlangListImproper (value) ->
-    Error (output_error "invalid")
+    list_to_binary value true buffer
   | OtpErlangTuple (value) ->
-    Error (output_error "invalid")
+    tuple_to_binary value buffer
   | OtpErlangMap (value) ->
-    Error (output_error "invalid")
-  | OtpErlangPid (value) ->
-    Error (output_error "invalid")
-  | OtpErlangPort (value) ->
-    Error (output_error "invalid")
-  | OtpErlangReference (value) ->
-    Error (output_error "invalid")
-  | OtpErlangFunction (value) ->
-    Error (output_error "invalid")
+    hashtbl_to_binary value buffer
+  | OtpErlangPid ({Pid.node_tag; node; id; serial; creation}) ->
+    pid_to_binary node_tag node id serial creation buffer
+  | OtpErlangPort ({Port.node_tag; node; id; creation}) ->
+    port_to_binary node_tag node id creation buffer
+  | OtpErlangReference ({Reference.node_tag; node; id; creation}) ->
+    reference_to_binary node_tag node id creation buffer
+  | OtpErlangFunction ({Function.tag; value}) ->
+    function_to_binary tag value buffer
 
-and integer_to_binary value buffer : (Buffer.t, string) result =
+and string_to_binary value buffer =
+  let length = String.length value in
+  if length = 0 then (
+    Buffer.add_char buffer (char_of_int tag_nil_ext) ;
+    Ok (buffer))
+  else if length <= 65535 then (
+    Buffer.add_char buffer (char_of_int tag_string_ext) ;
+    pack_uint16 length buffer ;
+    Buffer.add_string buffer value ;
+    Ok (buffer))
+  else if valid_uint32_positive length then (
+    Buffer.add_char buffer (char_of_int tag_list_ext) ;
+    pack_uint32 length buffer ;
+    String.iter (fun c ->
+      Buffer.add_char buffer (char_of_int tag_small_integer_ext) ;
+      Buffer.add_char buffer c
+    ) value ;
+    Buffer.add_char buffer (char_of_int tag_nil_ext) ;
+    Ok (buffer))
+  else
+    Error (output_error "uint32 overflow")
+
+and tuple_to_binary value buffer =
+  let rec loop = function
+    | [] ->
+      Ok (buffer)
+    | h::t ->
+      match term_to_binary_ h buffer with
+      | Error (error) ->
+        Error (error)
+      | Ok _ ->
+        loop t
+  and length = List.length value in
+  if length <= 255 then (
+    Buffer.add_char buffer (char_of_int tag_small_tuple_ext) ;
+    Buffer.add_char buffer (char_of_int length) ;
+    loop value)
+  else if valid_uint32_positive length then (
+    Buffer.add_char buffer (char_of_int tag_large_tuple_ext) ;
+    pack_uint32 length buffer ;
+    loop value)
+  else
+    Error (output_error "uint32 overflow")
+
+and hashtbl_to_binary value buffer =
+  let length = Hashtbl.length value in
+  if valid_uint32_positive length then (
+    pack_uint32 length buffer ;
+    try (Hashtbl.iter (fun key value ->
+      match term_to_binary_ key buffer with
+      | Error (error) ->
+        raise (HashtblExit error)
+      | Ok _ ->
+        match term_to_binary_ value buffer with
+        | Error (error) ->
+          raise (HashtblExit error)
+        | Ok _ ->
+          ()
+    ) value ; Ok (buffer))
+    with
+      HashtblExit (error) ->
+        Error (error))
+  else
+    Error (output_error "uint32 overflow")
+
+and list_to_binary value improper buffer =
+  let rec loop = function
+    | [] ->
+      Ok (buffer)
+    | h::t ->
+      match term_to_binary_ h buffer with
+      | Ok _ ->
+        loop t
+      | Error (error) ->
+        Error (error)
+  and length = List.length value in
+  if length = 0 then (
+    Buffer.add_char buffer (char_of_int tag_nil_ext) ;
+    Ok (buffer))
+  else if valid_uint32_positive length then (
+    Buffer.add_char buffer (char_of_int tag_list_ext) ; (
+    if improper then
+      pack_uint32 (length - 1) buffer
+    else
+      pack_uint32 length buffer) ;
+    match loop value with
+    | Error (error) ->
+      Error (error)
+    | Ok (_) when not improper ->
+      Buffer.add_char buffer (char_of_int tag_nil_ext) ;
+      Ok (buffer)
+    | Ok (_) ->
+      Ok (buffer))
+  else
+    Error (output_error "uint32 overflow")
+
+and integer_to_binary value buffer =
   if value >= 0 && value <= 255 then (
     Buffer.add_char buffer (char_of_int tag_small_integer_ext) ;
     Buffer.add_char buffer (char_of_int value) ;
@@ -646,7 +755,7 @@ and integer_to_binary value buffer : (Buffer.t, string) result =
   else
     bignum_to_binary (Big_int.big_int_of_int value) buffer
 
-and bignum_to_binary value buffer : (Buffer.t, string) result =
+and bignum_to_binary value buffer =
   let bits8 = Big_int.big_int_of_int 0xff
   and sign = if (Big_int.sign_big_int value) = -1 then
     char_of_int 1
@@ -678,10 +787,99 @@ and bignum_to_binary value buffer : (Buffer.t, string) result =
   else
     Error (output_error "uint32 overflow")
 
-and float_to_binary value buffer : (Buffer.t, string) result =
+and float_to_binary value buffer =
   Buffer.add_char buffer (char_of_int tag_new_float_ext) ;
   pack_double value buffer ;
   Ok (buffer)
+
+and atom_to_binary value buffer =
+  let length = String.length value in
+  if length <= 255 then (
+    Buffer.add_char buffer (char_of_int tag_small_atom_ext) ;
+    Buffer.add_char buffer (char_of_int length) ;
+    Buffer.add_string buffer value ;
+    Ok (buffer))
+  else if length <= 65535 then (
+    Buffer.add_char buffer (char_of_int tag_atom_ext) ;
+    pack_uint16 length buffer ;
+    Buffer.add_string buffer value ;
+    Ok (buffer))
+  else
+    Error (output_error "uint16 overflow")
+
+and atom_utf8_to_binary value buffer =
+  let length = String.length value in
+  if length <= 255 then (
+    Buffer.add_char buffer (char_of_int tag_small_atom_utf8_ext) ;
+    Buffer.add_char buffer (char_of_int length) ;
+    Buffer.add_string buffer value ;
+    Ok (buffer))
+  else if length <= 65535 then (
+    Buffer.add_char buffer (char_of_int tag_atom_utf8_ext) ;
+    pack_uint16 length buffer ;
+    Buffer.add_string buffer value ;
+    Ok (buffer))
+  else
+    Error (output_error "uint16 overflow")
+
+and binary_bits_to_binary value bits buffer =
+  let length = String.length value in
+  if bits < 1 || bits > 8 then
+    Error (output_error "invalid OtpErlangBinaryBits")
+  else if valid_uint32_positive length then (
+    if bits <> 8 then (
+      Buffer.add_char buffer (char_of_int tag_bit_binary_ext) ;
+      pack_uint32 length buffer ;
+      Buffer.add_char buffer (char_of_int bits))
+    else (
+      Buffer.add_char buffer (char_of_int tag_binary_ext) ;
+      pack_uint32 length buffer) ;
+    Buffer.add_string buffer value ;
+    Ok (buffer))
+  else
+    Error (output_error "uint32 overflow")
+
+and function_to_binary tag value buffer =
+  Buffer.add_char buffer (char_of_int tag) ;
+  Buffer.add_string buffer value ;
+  Ok (buffer)
+
+and pid_to_binary node_tag node id serial creation buffer =
+  Buffer.add_char buffer (char_of_int tag_pid_ext) ;
+  Buffer.add_char buffer (char_of_int node_tag) ;
+  Buffer.add_string buffer node ;
+  Buffer.add_string buffer id ;
+  Buffer.add_string buffer serial ;
+  Buffer.add_char buffer (char_of_int creation) ;
+  Ok (buffer)
+
+and port_to_binary node_tag node id creation buffer =
+  Buffer.add_char buffer (char_of_int tag_port_ext) ;
+  Buffer.add_char buffer (char_of_int node_tag) ;
+  Buffer.add_string buffer node ;
+  Buffer.add_string buffer id ;
+  Buffer.add_char buffer (char_of_int creation) ;
+  Ok (buffer)
+
+and reference_to_binary node_tag node id creation buffer =
+  let length = (String.length id) / 4 in
+  if length = 0 then (
+    Buffer.add_char buffer (char_of_int tag_reference_ext) ;
+    Buffer.add_char buffer (char_of_int node_tag) ;
+    Buffer.add_string buffer node ;
+    Buffer.add_string buffer id ;
+    Buffer.add_char buffer (char_of_int creation) ;
+    Ok (buffer))
+  else if length <= 65535 then (
+    Buffer.add_char buffer (char_of_int tag_new_reference_ext) ;
+    pack_uint16 length buffer ;
+    Buffer.add_char buffer (char_of_int node_tag) ;
+    Buffer.add_string buffer node ;
+    Buffer.add_char buffer (char_of_int creation) ;
+    Buffer.add_string buffer id ;
+    Ok (buffer))
+  else
+    Error (output_error "uint16 overflow")
 
 let binary_to_term (binary : string) : (t, string) result =
   let size = String.length binary in
@@ -778,7 +976,7 @@ and map_to_string (terms : (t, t) Hashtbl.t) : string =
   Buffer.add_string buffer "}" ;
   Buffer.contents buffer
 
-exception TermOk of string ;;
+exception TermOk of string
 let term_ok (value : (t, string) result) : t =
   match value with
   | Ok (term) ->
@@ -786,7 +984,7 @@ let term_ok (value : (t, string) result) : t =
   | Error (error) ->
       raise (TermOk error)
 
-exception TermError of string ;;
+exception TermError of string
 let term_error (value : (t, string) result) : string =
   match value with
   | Ok (term) ->
@@ -794,7 +992,7 @@ let term_error (value : (t, string) result) : string =
   | Error (error) ->
       error
 
-exception BinaryOk of string ;;
+exception BinaryOk of string
 let binary_ok (value : (string, string) result) : string =
   match value with
   | Ok (binary) ->
@@ -802,13 +1000,27 @@ let binary_ok (value : (string, string) result) : string =
   | Error (error) ->
       raise (BinaryOk error)
 
-exception BinaryError of string ;;
+exception BinaryError of string
 let binary_error (value : (string, string) result) : string =
   match value with
   | Ok (binary) ->
       raise (BinaryError binary)
   | Error (error) ->
       error
+
+let register_printers () =
+  Printexc.register_printer (function
+    | TermOk e ->
+      Some ("term_ok " ^ e)
+    | TermError e ->
+      Some ("term_error " ^ e)
+    | BinaryOk e ->
+      Some ("binary_ok " ^ e)
+    | BinaryError e ->
+      Some ("binary_error " ^ e)
+    | _ ->
+      None
+  )
 
 (*
 
@@ -1172,6 +1384,74 @@ let test_decode_large_big_integer () =
     (t_to_string bigint2_check)) ;
   true
 
+let test_encode_tuple () =
+  assert (
+    (binary_ok (term_to_binary (OtpErlangTuple ([])))) =
+    "\x83h\x00") ;
+  let tuple1 = OtpErlangTuple ([OtpErlangTuple ([]); OtpErlangTuple ([])]) in
+  assert (
+    (binary_ok (term_to_binary tuple1)) =
+    "\x83h\x02h\x00h\x00") ;
+  let rec tuple_create size l =
+    if size = 0 then
+      OtpErlangTuple (l)
+    else
+      tuple_create (size - 1) ([OtpErlangTuple ([])] @ l) in
+  let rec string_create_impl size s b =
+    if size = 0 then
+      Buffer.contents b
+    else (
+      Buffer.add_string b s ;
+      string_create_impl (size - 1) s b)
+  and string_create size s =
+    string_create_impl size s (Buffer.create (size * (String.length s))) in
+  assert (
+    (binary_ok (term_to_binary (tuple_create 255 []))) =
+    "\x83h\xff" ^ (string_create 255 "h\x00")) ;
+  assert (
+    (binary_ok (term_to_binary (tuple_create 256 []))) =
+    "\x83i\x00\x00\x01\x00" ^ (string_create 256 "h\x00")) ;
+  true
+
+let test_encode_empty_list () =
+  assert (
+    (binary_ok (term_to_binary (OtpErlangList ([])))) =
+    "\x83j") ;
+  true
+
+let test_encode_string_list () =
+  assert (
+    (binary_ok (term_to_binary (OtpErlangString ("")))) =
+    "\x83j") ;
+  assert (
+    (binary_ok (term_to_binary (OtpErlangString ("\x00")))) =
+    "\x83k\x00\x01\x00") ;
+  let s = "\x00\x01\x02\x03\x04\x05\x06\x07\x08\t\n\x0b\x0c\r" ^
+          "\x0e\x0f\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1a" ^
+          "\x1b\x1c\x1d\x1e\x1f !\"#$%&'()*+,-./0123456789:;<=>" ^
+          "?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopq" ^
+          "rstuvwxyz{|}~\x7f\x80\x81\x82\x83\x84\x85\x86\x87\x88" ^
+          "\x89\x8a\x8b\x8c\x8d\x8e\x8f\x90\x91\x92\x93\x94\x95" ^
+          "\x96\x97\x98\x99\x9a\x9b\x9c\x9d\x9e\x9f\xa0\xa1\xa2" ^
+          "\xa3\xa4\xa5\xa6\xa7\xa8\xa9\xaa\xab\xac\xad\xae\xaf" ^
+          "\xb0\xb1\xb2\xb3\xb4\xb5\xb6\xb7\xb8\xb9\xba\xbb\xbc" ^
+          "\xbd\xbe\xbf\xc0\xc1\xc2\xc3\xc4\xc5\xc6\xc7\xc8\xc9" ^
+          "\xca\xcb\xcc\xcd\xce\xcf\xd0\xd1\xd2\xd3\xd4\xd5\xd6" ^
+          "\xd7\xd8\xd9\xda\xdb\xdc\xdd\xde\xdf\xe0\xe1\xe2\xe3" ^
+          "\xe4\xe5\xe6\xe7\xe8\xe9\xea\xeb\xec\xed\xee\xef\xf0" ^
+          "\xf1\xf2\xf3\xf4\xf5\xf6\xf7\xf8\xf9\xfa\xfb\xfc\xfd\xfe\xff" in
+  assert (
+    (binary_ok (term_to_binary (OtpErlangString (s)))) =
+    "\x83k\x01\x00" ^ s) ;
+  true
+
+let test_encode_list_basic () =
+  assert (
+    (binary_ok (term_to_binary (OtpErlangString ("")))) =
+    "\x83\x6A") ;
+  (* ... *)
+  true
+
 (* ... *)
 
 let test_encode_small_integer () =
@@ -1247,18 +1527,7 @@ let test_encode_float () =
 (* ... *)
 
 let tests =
-  Printexc.register_printer (function
-    | TermOk e ->
-        Some ("term_ok " ^ e)
-    | TermError e ->
-        Some ("term_error " ^ e)
-    | BinaryOk e ->
-        Some ("binary_ok " ^ e)
-    | BinaryError e ->
-        Some ("binary_error " ^ e)
-    | _ ->
-        None
-  ) ;
+  register_printers () ;
 [
   "binary_to_term (basic)", test_decode_basic;
   "binary_to_term (atom)", test_decode_atom;
@@ -1275,6 +1544,11 @@ let tests =
   "binary_to_term (float)", test_decode_float;
   "binary_to_term (small bigint)", test_decode_small_big_integer;
   "binary_to_term (large bigint)", test_decode_large_big_integer;
+  "term_to_binary (tuple)", test_encode_tuple;
+  "term_to_binary (empty list)", test_encode_empty_list;
+  "term_to_binary (string list)", test_encode_string_list;
+  "term_to_binary (list basic)", test_encode_list_basic;
+
   "term_to_binary (small integer)", test_encode_small_integer;
   "term_to_binary (integer, 64bit-only)", test_encode_integer;
   "term_to_binary (small bigint)", test_encode_small_big_integer;
