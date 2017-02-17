@@ -538,13 +538,13 @@ let rec binary_to_term_ i binary : (int, t, string) result2 =
 and binary_to_term_sequence i length binary : (int, t list, string) result2 =
   let rec loop length_index i0 sequence =
     if length_index = length then
-      Ok2 (i0, sequence)
+      Ok2 (i0, List.rev sequence)
     else
       match binary_to_term_ i0 binary with
       | Error2 (error) ->
         Error2 (error)
       | Ok2 (i1, element) ->
-        loop (length_index + 1) i1 (list_append sequence [element])
+        loop (length_index + 1) i1 ([element] @ sequence)
   in
   loop 0 i []
 
