@@ -2,15 +2,15 @@
   ex: set ft=ocaml fenc=utf-8 sts=2 ts=2 sw=2 et nomod: *)
 
 (*
- 
+
   BSD LICENSE
-  
+
   Copyright (c) 2017, Michael Truog <mjtruog at gmail dot com>
   All rights reserved.
-  
+
   Redistribution and use in source and binary forms, with or without
   modification, are permitted provided that the following conditions are met:
-  
+
       * Redistributions of source code must retain the above copyright
         notice, this list of conditions and the following disclaimer.
       * Redistributions in binary form must reproduce the above copyright
@@ -23,7 +23,7 @@
       * The name of the author may not be used to endorse or promote
         products derived from this software without specific prior
         written permission
-  
+
   THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
   CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
   INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
@@ -38,7 +38,7 @@
   NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
   OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH
   DAMAGE.
- 
+
  *)
 
 (* tag values here http://www.erlang.org/doc/apps/erts/erl_ext_dist.html *)
@@ -142,10 +142,10 @@ type ('a,'b,'c,'d) result3 = Ok3 of 'a * 'b * 'c | Error3 of 'd
 
 let list_append l1 l2 = List.rev_append (List.rev l1) l2
 
-let valid_uint32_positive (value : int) : bool = 
+let valid_uint32_positive (value : int) : bool =
   (Int64.of_int value) <= (Int64.of_string "4294967295")
 
-let valid_int32 (value : int) : bool = 
+let valid_int32 (value : int) : bool =
   let value64 = Int64.of_int value in
   value64 >= (Int64.of_string "-2147483648") &&
   value64 <= (Int64.of_string "2147483647")
@@ -177,7 +177,7 @@ let unpack_integer i binary : t =
   and byte1 = int_of_char binary.[i + 1]
   and byte2 = int_of_char binary.[i + 2]
   and byte3 = int_of_char binary.[i + 3] in
-  let value = 
+  let value =
     Int32.logor (
       Int32.shift_left (Int32.of_int byte0) 24
     ) (
@@ -757,7 +757,7 @@ and sequence_to_string (terms : t list) : string =
   let buffer = Buffer.create (32 * (List.length terms)) in
   List.iter (fun term ->
     if (Buffer.length buffer) = 0 then
-      Buffer.add_string buffer "[" 
+      Buffer.add_string buffer "["
     else
       Buffer.add_string buffer "," ;
     Buffer.add_string buffer (t_to_string term)) terms ;
@@ -768,7 +768,7 @@ and map_to_string (terms : (t, t) Hashtbl.t) : string =
   let buffer = Buffer.create (32 * (Hashtbl.length terms)) in
   Hashtbl.iter (fun key value ->
     if (Buffer.length buffer) = 0 then
-      Buffer.add_string buffer "{" 
+      Buffer.add_string buffer "{"
     else
       Buffer.add_string buffer "," ;
     Buffer.add_string buffer (t_to_string key) ;
@@ -813,14 +813,14 @@ let binary_error (value : (string, string) result) : string =
 (*
 
   BSD LICENSE (of tests below)
-  
+
   Copyright (c) 2017, Michael Truog <mjtruog at gmail dot com>
   Copyright (c) 2009-2013, Dmitry Vasiliev <dima@hlabs.org>
   All rights reserved.
-  
+
   Redistribution and use in source and binary forms, with or without
   modification, are permitted provided that the following conditions are met:
-  
+
       * Redistributions of source code must retain the above copyright
         notice, this list of conditions and the following disclaimer.
       * Redistributions in binary form must reproduce the above copyright
@@ -833,7 +833,7 @@ let binary_error (value : (string, string) result) : string =
       * The name of the author may not be used to endorse or promote
         products derived from this software without specific prior
         written permission
-  
+
   THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
   CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
   INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
@@ -848,7 +848,7 @@ let binary_error (value : (string, string) result) : string =
   NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
   OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH
   DAMAGE.
- 
+
  *)
 
 let test_decode_basic () =
@@ -1276,9 +1276,9 @@ let tests =
   "binary_to_term (small bigint)", test_decode_small_big_integer;
   "binary_to_term (large bigint)", test_decode_large_big_integer;
   "term_to_binary (small integer)", test_encode_small_integer;
-  "term_to_binary (integer, 64bit-only)",  test_encode_integer;
-  "term_to_binary (small bigint)",  test_encode_small_big_integer;
-  "term_to_binary (large bigint)",  test_encode_large_big_integer;
-  "term_to_binary (float)",  test_encode_float;
+  "term_to_binary (integer, 64bit-only)", test_encode_integer;
+  "term_to_binary (small bigint)", test_encode_small_big_integer;
+  "term_to_binary (large bigint)", test_encode_large_big_integer;
+  "term_to_binary (float)", test_encode_float;
 ]
 
