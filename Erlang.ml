@@ -71,6 +71,8 @@ let tag_fun_ext = 117
 let tag_atom_utf8_ext = 118
 let tag_small_atom_utf8_ext = 119
 
+let buffer_size = 65536
+
 module Pid = struct
   type t = {
       node_tag : int;
@@ -130,12 +132,8 @@ type t =
   | OtpErlangReference of Reference.t
   | OtpErlangFunction of Function.t
 
-let input_error (s : string) : string =
-  "input_error: " ^ s
-(*
 let output_error (s : string) : string =
   "output_error: " ^ s
-*)
 let parse_error (s : string) : string =
   "parse_error: " ^ s
 
@@ -144,34 +142,42 @@ type ('a,'b,'c,'d) result3 = Ok3 of 'a * 'b * 'c | Error3 of 'd
 
 let list_append l1 l2 = List.rev_append (List.rev l1) l2
 
+let valid_uint32_positive (value : int) : bool = 
+  (Int64.of_int value) <= (Int64.of_string "4294967295")
+
+let valid_int32 (value : int) : bool = 
+  let value64 = Int64.of_int value in
+  value64 >= (Int64.of_string "-2147483648") &&
+  value64 <= (Int64.of_string "2147483647")
+
 let unpack_uint16 i binary : int =
-let byte0 = int_of_char binary.[i]
-and byte1 = int_of_char binary.[i + 1] in
-  ((byte0 lsl 8) lor byte1)
+  let byte0 = int_of_char binary.[i]
+  and byte1 = int_of_char binary.[i + 1] in
+    ((byte0 lsl 8) lor byte1)
 
 let unpack_uint32 i binary : (int, int, string) result2 =
-let byte0 = int_of_char binary.[i]
-and byte1 = int_of_char binary.[i + 1]
-and byte2 = int_of_char binary.[i + 2]
-and byte3 = int_of_char binary.[i + 3] in
-if byte0 > max_int lsr 24 then
-  Error2 (parse_error "ocaml int overflow")
-else
-  Ok2 (i + 4,
-    (byte0 lsl 24) lor (
-      (byte1 lsl 16) lor (
-        (byte2 lsl 8) lor byte3
+  let byte0 = int_of_char binary.[i]
+  and byte1 = int_of_char binary.[i + 1]
+  and byte2 = int_of_char binary.[i + 2]
+  and byte3 = int_of_char binary.[i + 3] in
+  if byte0 > max_int lsr 24 then
+    (* 32 bit system *)
+    Error2 (parse_error "ocaml int overflow")
+  else
+    Ok2 (i + 4,
+      (byte0 lsl 24) lor (
+        (byte1 lsl 16) lor (
+          (byte2 lsl 8) lor byte3
+        )
       )
     )
-  )
 
 let unpack_integer i binary : t =
-let byte0 = int_of_char binary.[i]
-and byte1 = int_of_char binary.[i + 1]
-and byte2 = int_of_char binary.[i + 2]
-and byte3 = int_of_char binary.[i + 3] in
-if byte0 > min_int lsr 24 then
-  OtpErlangIntegerLarge (Big_int.big_int_of_int32 (
+  let byte0 = int_of_char binary.[i]
+  and byte1 = int_of_char binary.[i + 1]
+  and byte2 = int_of_char binary.[i + 2]
+  and byte3 = int_of_char binary.[i + 3] in
+  let value = 
     Int32.logor (
       Int32.shift_left (Int32.of_int byte0) 24
     ) (
@@ -185,64 +191,80 @@ if byte0 > min_int lsr 24 then
         )
       )
     )
-  ))
-else if (byte0 lsr 7) = 1 then
-  OtpErlangIntegerSmall (
-    -2147483648 + (
-      ((byte0 land 0x7f) lsl 24) lor (
-        (byte1 lsl 16) lor (
-          (byte2 lsl 8) lor byte3
-        )
-      )
-    )
-  )
-else
-  OtpErlangIntegerSmall (
-    (byte0 lsl 24) lor (
-      (byte1 lsl 16) lor (
-        (byte2 lsl 8) lor byte3
-      )
-    )
-  )
+  in
+  if byte0 > min_int lsr 24 then
+    OtpErlangIntegerLarge (Big_int.big_int_of_int32 value)
+  else
+    OtpErlangIntegerSmall (Int32.to_int value)
 
 let unpack_double i binary : float =
-let byte0 = Int64.of_int (int_of_char binary.[i])
-and byte1 = Int64.of_int (int_of_char binary.[i + 1])
-and byte2 = Int64.of_int (int_of_char binary.[i + 2])
-and byte3 = Int64.of_int (int_of_char binary.[i + 3])
-and byte4 = Int64.of_int (int_of_char binary.[i + 4])
-and byte5 = Int64.of_int (int_of_char binary.[i + 5])
-and byte6 = Int64.of_int (int_of_char binary.[i + 6])
-and byte7 = Int64.of_int (int_of_char binary.[i + 7]) in
-Int64.float_of_bits (
-  Int64.logor (
+  let byte0 = Int64.of_int (int_of_char binary.[i])
+  and byte1 = Int64.of_int (int_of_char binary.[i + 1])
+  and byte2 = Int64.of_int (int_of_char binary.[i + 2])
+  and byte3 = Int64.of_int (int_of_char binary.[i + 3])
+  and byte4 = Int64.of_int (int_of_char binary.[i + 4])
+  and byte5 = Int64.of_int (int_of_char binary.[i + 5])
+  and byte6 = Int64.of_int (int_of_char binary.[i + 6])
+  and byte7 = Int64.of_int (int_of_char binary.[i + 7]) in
+  Int64.float_of_bits (
     Int64.logor (
       Int64.logor (
         Int64.logor (
           Int64.logor (
             Int64.logor (
               Int64.logor (
-                Int64.shift_left byte0 56
+                Int64.logor (
+                  Int64.shift_left byte0 56
+                ) (
+                  Int64.shift_left byte1 48
+                )
               ) (
-                Int64.shift_left byte1 48
+                Int64.shift_left byte2 40
               )
             ) (
-              Int64.shift_left byte2 40
+              Int64.shift_left byte3 32
             )
           ) (
-            Int64.shift_left byte3 32
+            Int64.shift_left byte4 24
           )
         ) (
-          Int64.shift_left byte4 24
+          Int64.shift_left byte5 16
         )
       ) (
-        Int64.shift_left byte5 16
+        Int64.shift_left byte6 8
       )
-    ) (
-      Int64.shift_left byte6 8
-    )
-  ) byte7
-)
+    ) byte7
+  )
+
+let pack_uint32 (value : int) buffer : unit =
+  let byte0 = (value asr 24) land 0xff
+  and byte1 = (value lsr 16) land 0xff
+  and byte2 = (value lsr 8) land 0xff
+  and byte3 = value land 0xff in
+  Buffer.add_char buffer (char_of_int byte0) ;
+  Buffer.add_char buffer (char_of_int byte1) ;
+  Buffer.add_char buffer (char_of_int byte2) ;
+  Buffer.add_char buffer (char_of_int byte3)
+
+let pack_double (value : float) buffer : unit =
+  let bits8 = Int64.of_int 0xff
+  and value64 = Int64.bits_of_float value in
+  let byte0 = Int64.logand (Int64.shift_right_logical value64 56) bits8
+  and byte1 = Int64.logand (Int64.shift_right_logical value64 48) bits8
+  and byte2 = Int64.logand (Int64.shift_right_logical value64 40) bits8
+  and byte3 = Int64.logand (Int64.shift_right_logical value64 32) bits8
+  and byte4 = Int64.logand (Int64.shift_right_logical value64 24) bits8
+  and byte5 = Int64.logand (Int64.shift_right_logical value64 16) bits8
+  and byte6 = Int64.logand (Int64.shift_right_logical value64 8) bits8
+  and byte7 = Int64.logand value64 bits8 in
+  Buffer.add_char buffer (char_of_int (Int64.to_int byte0)) ;
+  Buffer.add_char buffer (char_of_int (Int64.to_int byte1)) ;
+  Buffer.add_char buffer (char_of_int (Int64.to_int byte2)) ;
+  Buffer.add_char buffer (char_of_int (Int64.to_int byte3)) ;
+  Buffer.add_char buffer (char_of_int (Int64.to_int byte4)) ;
+  Buffer.add_char buffer (char_of_int (Int64.to_int byte5)) ;
+  Buffer.add_char buffer (char_of_int (Int64.to_int byte6)) ;
+  Buffer.add_char buffer (char_of_int (Int64.to_int byte7))
 
 let rec binary_to_term_ i binary : (int, t, string) result2 =
   let tag = int_of_char binary.[i]
@@ -573,6 +595,94 @@ and binary_to_atom i binary : (int, int, string, string) result3 =
   else
     Error3 (parse_error "invalid atom tag")
 
+let rec term_to_binary_ term buffer : (Buffer.t, string) result =
+  match term with
+  | OtpErlangIntegerSmall (value) ->
+    integer_to_binary value buffer
+  | OtpErlangIntegerLarge (value) ->
+    bignum_to_binary value buffer
+  | OtpErlangFloat (value) ->
+    float_to_binary value buffer
+  | OtpErlangAtom (value) ->
+    Error (output_error "invalid")
+  | OtpErlangAtomUTF8 (value) ->
+    Error (output_error "invalid")
+  | OtpErlangAtomCacheRef (value) ->
+    Error (output_error "invalid")
+  | OtpErlangAtomBool (value) ->
+    Error (output_error "invalid")
+  | OtpErlangString (value) ->
+    Error (output_error "invalid")
+  | OtpErlangBinary (value) ->
+    Error (output_error "invalid")
+  | OtpErlangBinaryBits (value, bits) ->
+    Error (output_error "invalid")
+  | OtpErlangList (value) ->
+    Error (output_error "invalid")
+  | OtpErlangListImproper (value) ->
+    Error (output_error "invalid")
+  | OtpErlangTuple (value) ->
+    Error (output_error "invalid")
+  | OtpErlangMap (value) ->
+    Error (output_error "invalid")
+  | OtpErlangPid (value) ->
+    Error (output_error "invalid")
+  | OtpErlangPort (value) ->
+    Error (output_error "invalid")
+  | OtpErlangReference (value) ->
+    Error (output_error "invalid")
+  | OtpErlangFunction (value) ->
+    Error (output_error "invalid")
+
+and integer_to_binary value buffer : (Buffer.t, string) result =
+  if value >= 0 && value <= 255 then (
+    Buffer.add_char buffer (char_of_int tag_small_integer_ext) ;
+    Buffer.add_char buffer (char_of_int value) ;
+    Ok (buffer))
+  else if valid_int32 value then (
+    Buffer.add_char buffer (char_of_int tag_integer_ext) ;
+    pack_uint32 value buffer ;
+    Ok (buffer))
+  else
+    bignum_to_binary (Big_int.big_int_of_int value) buffer
+
+and bignum_to_binary value buffer : (Buffer.t, string) result =
+  let bits8 = Big_int.big_int_of_int 0xff
+  and sign = if (Big_int.sign_big_int value) = -1 then
+    char_of_int 1
+  else
+    char_of_int 0
+  in
+  let rec loop bignum l =
+    if Big_int.gt_big_int bignum Big_int.zero_big_int then (
+      Buffer.add_char l (char_of_int
+        (Big_int.int_of_big_int (Big_int.and_big_int bignum bits8))) ;
+      loop (Big_int.shift_right_towards_zero_big_int bignum 8) l)
+    else
+      l
+  in
+  let l_result = loop (Big_int.abs_big_int value) (Buffer.create 255) in
+  let l_length = Buffer.length l_result in
+  if l_length <= 255 then (
+    Buffer.add_char buffer (char_of_int tag_small_big_ext) ;
+    Buffer.add_char buffer (char_of_int l_length) ;
+    Buffer.add_char buffer sign ;
+    Buffer.add_buffer buffer l_result ;
+    Ok (buffer))
+  else if (valid_uint32_positive l_length) then (
+    Buffer.add_char buffer (char_of_int tag_large_big_ext) ;
+    pack_uint32 l_length buffer ;
+    Buffer.add_char buffer sign ;
+    Buffer.add_buffer buffer l_result ;
+    Ok (buffer))
+  else
+    Error (output_error "uint32 overflow")
+
+and float_to_binary value buffer : (Buffer.t, string) result =
+  Buffer.add_char buffer (char_of_int tag_new_float_ext) ;
+  pack_double value buffer ;
+  Ok (buffer)
+
 let binary_to_term (binary : string) : (t, string) result =
   let size = String.length binary in
   if size <= 1 then
@@ -592,8 +702,14 @@ let binary_to_term (binary : string) : (t, string) result =
       Invalid_argument(_) ->
         Error (parse_error "missing data")
 
-let term_to_binary (_ : t) : (string, string) result =
-  Error (input_error "invalid")
+let term_to_binary (term : t) : (string, string) result =
+  let buffer = Buffer.create buffer_size in
+  Buffer.add_char buffer (char_of_int tag_version) ;
+  match term_to_binary_ term buffer with
+  | Ok (data_uncompressed) ->
+    Ok (Buffer.contents data_uncompressed)
+  | Error (error) ->
+    Error (error)
 
 let rec t_to_string (term : t) : string =
   match term with
@@ -620,13 +736,13 @@ let rec t_to_string (term : t) : string =
     "OtpErlangBinary(\"" ^ value ^ "\")"
   | OtpErlangBinaryBits (value, bits) ->
     "OtpErlangBinaryBits(\"" ^ value ^ "\"," ^ (string_of_int bits) ^ ")"
-  | OtpErlangList value ->
+  | OtpErlangList (value) ->
     "OtpErlangList(" ^ (sequence_to_string value) ^ ")"
-  | OtpErlangListImproper value ->
+  | OtpErlangListImproper (value) ->
     "OtpErlangListImproper(" ^ (sequence_to_string value) ^ ")"
-  | OtpErlangTuple value ->
+  | OtpErlangTuple (value) ->
     "OtpErlangTuple(" ^ (sequence_to_string value) ^ ")"
-  | OtpErlangMap value ->
+  | OtpErlangMap (value) ->
     "OtpErlangMap(" ^ (map_to_string value) ^ ")"
   | OtpErlangPid _ ->
     "OtpErlangPid()"
@@ -675,6 +791,22 @@ let term_error (value : (t, string) result) : string =
   match value with
   | Ok (term) ->
       raise (TermError (t_to_string term))
+  | Error (error) ->
+      error
+
+exception BinaryOk of string ;;
+let binary_ok (value : (string, string) result) : string =
+  match value with
+  | Ok (binary) ->
+      binary
+  | Error (error) ->
+      raise (BinaryOk error)
+
+exception BinaryError of string ;;
+let binary_error (value : (string, string) result) : string =
+  match value with
+  | Ok (binary) ->
+      raise (BinaryError binary)
   | Error (error) ->
       error
 
@@ -1040,12 +1172,90 @@ let test_decode_large_big_integer () =
     (t_to_string bigint2_check)) ;
   true
 
+(* ... *)
+
+let test_encode_small_integer () =
+  assert (
+    (binary_ok (term_to_binary (OtpErlangIntegerSmall (0)))) =
+    "\x83a\x00") ;
+  assert (
+    (binary_ok (term_to_binary (OtpErlangIntegerSmall (255)))) =
+    "\x83a\xff") ;
+  true
+
+let test_encode_integer () =
+  assert (
+    (binary_ok (term_to_binary (OtpErlangIntegerSmall (-1)))) =
+    "\x83b\xff\xff\xff\xff") ;
+  assert (
+    (binary_ok (term_to_binary
+      (OtpErlangIntegerSmall (Int32.to_int Int32.min_int)))) =
+    "\x83b\x80\x00\x00\x00") ;
+  assert (
+    (binary_ok (term_to_binary (OtpErlangIntegerSmall (256)))) =
+    "\x83b\x00\x00\x01\x00") ;
+  assert (
+    (binary_ok (term_to_binary
+      (OtpErlangIntegerSmall (Int32.to_int Int32.max_int)))) =
+    "\x83b\x7f\xff\xff\xff") ;
+  true
+
+let test_encode_small_big_integer () =
+  let bigint1 = OtpErlangIntegerLarge (
+    Big_int.add_int_big_int 1 (Big_int.big_int_of_int32 Int32.max_int)) in
+  assert (
+    (binary_ok (term_to_binary bigint1)) =
+    "\x83n\x04\x00\x00\x00\x00\x80") ;
+  let bigint2 = OtpErlangIntegerLarge (
+    Big_int.add_int_big_int (-1) (Big_int.big_int_of_int32 Int32.min_int)) in
+  assert (
+    (binary_ok (term_to_binary bigint2)) =
+    "\x83n\x04\x01\x01\x00\x00\x80") ;
+  true
+
+let test_encode_large_big_integer () =
+  let bigint1 = OtpErlangIntegerLarge (
+    Big_int.power_int_positive_int 2 2040) in
+  assert (
+    (binary_ok (term_to_binary bigint1)) =
+    "\x83o\x00\x00\x01\x00\x00" ^ (String.make 255 '\x00') ^ "\x01") ;
+  let bigint2 = OtpErlangIntegerLarge (
+    Big_int.minus_big_int (Big_int.power_int_positive_int 2 2040)) in
+  assert (
+    (binary_ok (term_to_binary bigint2)) =
+    "\x83o\x00\x00\x01\x00\x01" ^ (String.make 255 '\x00') ^ "\x01") ;
+  true
+
+let test_encode_float () =
+  assert (
+    (binary_ok (term_to_binary (OtpErlangFloat (0.0)))) =
+    "\x83F\x00\x00\x00\x00\x00\x00\x00\x00") ;
+  assert (
+    (binary_ok (term_to_binary (OtpErlangFloat (0.5)))) =
+    "\x83F?\xe0\x00\x00\x00\x00\x00\x00") ;
+  assert (
+    (binary_ok (term_to_binary (OtpErlangFloat (-0.5)))) =
+    "\x83F\xbf\xe0\x00\x00\x00\x00\x00\x00") ;
+  assert (
+    (binary_ok (term_to_binary (OtpErlangFloat (3.1415926)))) =
+    "\x83F@\t!\xfbM\x12\xd8J") ;
+  assert (
+    (binary_ok (term_to_binary (OtpErlangFloat (-3.1415926)))) =
+    "\x83F\xc0\t!\xfbM\x12\xd8J") ;
+  true
+
+(* ... *)
+
 let tests =
   Printexc.register_printer (function
     | TermOk e ->
         Some ("term_ok " ^ e)
     | TermError e ->
         Some ("term_error " ^ e)
+    | BinaryOk e ->
+        Some ("binary_ok " ^ e)
+    | BinaryError e ->
+        Some ("binary_error " ^ e)
     | _ ->
         None
   ) ;
@@ -1065,5 +1275,10 @@ let tests =
   "binary_to_term (float)", test_decode_float;
   "binary_to_term (small bigint)", test_decode_small_big_integer;
   "binary_to_term (large bigint)", test_decode_large_big_integer;
+  "term_to_binary (small integer)", test_encode_small_integer;
+  "term_to_binary (integer, 64bit-only)",  test_encode_integer;
+  "term_to_binary (small bigint)",  test_encode_small_big_integer;
+  "term_to_binary (large bigint)",  test_encode_large_big_integer;
+  "term_to_binary (float)",  test_encode_float;
 ]
 
