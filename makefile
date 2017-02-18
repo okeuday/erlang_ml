@@ -8,10 +8,10 @@ DEPS=\
      str.cmxa
 
 all: \
-     Erlang.cmi \
-     Erlang.cmx \
-     Main.cmx
-	ocamlopt -o test $(DEPS) Erlang.cmx Main.cmx
+     erlang.cmi \
+     erlang.cmx \
+     main.cmx
+	ocamlopt -o test $(DEPS) erlang.cmx main.cmx
 
 clean:
 	rm -f test *.cmi *.cmx *.o 
