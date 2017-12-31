@@ -6,6 +6,7 @@ OCAMLOPT ?= ocamlopt
 OCAMLDEP ?= ocamldep
 OCAMLMKLIB ?= ocamlmklib
 OCAMLFLAGS = -safe-string -w @A
+STDLIBDIR = $(shell $(OCAMLC) -where)
 OCAMLDEPS_NUM = \
     arith_flags.cmi \
     arith_flags.cmx \
@@ -28,24 +29,28 @@ OCAMLDEPS=\
     nums.cmxa \
     str.cmxa
 
-all: nums.cmxa \
+all: \
+     dependency_num \
      erlang.cmi \
      erlang.cmx \
      main.cmx
 	$(OCAMLOPT) -o test $(OCAMLDEPS) erlang.cmx main.cmx -ccopt -L.
 
 clean:
-	rm -f test *.cmi *.cmx *.o $(OCAMLDEPS_NUM)
+	rm -f test *.cmi *.cmx *.o \
+          dependency_num $(OCAMLDEPS_NUM)
 	cd external/num-1.1/src && $(MAKE) clean
 
-nums.cmxa:
-	cd external/num-1.1/src && \
-    $(MAKE) OCAMLC="$(OCAMLC)" \
-            OCAMLOPT="$(OCAMLOPT)" \
-            OCAMLDEP="$(OCAMLDEP)" \
-            OCAMLMKLIB="$(OCAMLMKLIB)" \
-            nums.cmxa libnums.a && \
-    cp $(OCAMLDEPS_NUM) ../../..
+dependency_num:
+	test -f $(STDLIBDIR)/nums.cmxa || \
+    (cd external/num-1.1/src && \
+     $(MAKE) OCAMLC="$(OCAMLC)" \
+             OCAMLOPT="$(OCAMLOPT)" \
+             OCAMLDEP="$(OCAMLDEP)" \
+             OCAMLMKLIB="$(OCAMLMKLIB)" \
+             nums.cmxa libnums.a && \
+     cp $(OCAMLDEPS_NUM) ../../..)
+	touch $@
 
 %.cmi: %.mli
 	$(OCAMLC) $(OCAMLFLAGS) -o $@ -c $<
