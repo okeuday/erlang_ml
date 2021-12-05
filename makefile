@@ -33,6 +33,7 @@ all: \
      dependency_num \
      erlang.cmi \
      erlang.cmx \
+     main.cmi \
      main.cmx
 	$(OCAMLOPT) -o test $(OCAMLDEPS) erlang.cmx main.cmx -ccopt -L.
 
