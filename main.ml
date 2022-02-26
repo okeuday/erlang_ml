@@ -2,10 +2,10 @@
   ex: set ft=ocaml fenc=utf-8 sts=2 ts=2 sw=2 et nomod: *)
 
 (*
- 
+
   MIT License
 
-  Copyright (c) 2017 Michael Truog <mjtruog at protonmail dot com>
+  Copyright (c) 2017-2022 Michael Truog <mjtruog at protonmail dot com>
 
   Permission is hereby granted, free of charge, to any person obtaining a
   copy of this software and associated documentation files (the "Software"),
@@ -24,7 +24,7 @@
   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
   FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
   DEALINGS IN THE SOFTWARE.
- 
+
  *)
 
 let str_replace input output =
@@ -46,7 +46,7 @@ let run (test : string * (unit -> bool)) : unit =
     e ->
       prerr_endline (backtrace e) ;
       print_endline ("FAIL! " ^ name)
-  
-let () = 
+
+let () =
   Printexc.record_backtrace true ;
   List.iter run Erlang.tests

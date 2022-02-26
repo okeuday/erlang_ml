@@ -1,7 +1,7 @@
-Erlang Binary Term Format for OCaml
-===================================
+Erlang External Term Format for OCaml
+=====================================
 
-Provides all encoding and decoding for the Erlang Binary Term Format
+Provides all encoding and decoding for the Erlang External Term Format
 (as defined at [http://erlang.org/doc/apps/erts/erl_ext_dist.html](http://erlang.org/doc/apps/erts/erl_ext_dist.html))
 in a single OCaml module.
 
