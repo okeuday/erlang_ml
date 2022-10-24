@@ -1,0 +1,3 @@
+(tests
+ (names main)
+ (libraries erlang str))
