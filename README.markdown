@@ -28,7 +28,7 @@ With dune:
 
 With local dependencies:
 
-    ./test
+    ./tests
 
 Author
 ------
