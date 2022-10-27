@@ -3,4 +3,4 @@
 (package
  (name erlang)
  (depends
-  (num (= 1.1))))
+  (zarith (= 1.12))))
