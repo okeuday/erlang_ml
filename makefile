@@ -7,55 +7,54 @@ OCAMLDEP ?= ocamldep
 OCAMLMKLIB ?= ocamlmklib
 OCAMLFLAGS = -safe-string -w @A
 STDLIBDIR = $(shell $(OCAMLC) -where)
-OCAMLDEPS_NUM = \
-    arith_flags.cmi \
-    arith_flags.cmx \
-    arith_status.cmi \
-    arith_status.cmx \
-    big_int.cmi \
-    big_int.cmx \
-    int_misc.cmi \
-    int_misc.cmx \
-    nat.cmi \
-    nat.cmx \
-    num.cmi \
-    num.cmx \
-    ratio.cmi \
-    ratio.cmx \
-    libnums.a \
-    nums.a \
-    nums.cmxa
+OCAMLDEPS_ZARITH = \
+    big_int_Z.cmi \
+    big_int_Z.cmx \
+    libzarith.a \
+    q.cmi \
+    q.cmx \
+    zarith.a \
+    zarith.cma \
+    zarith.cmxa \
+    zarith_top.cma \
+    zarith_top.cmi \
+    zarith_version.cmi \
+    zarith_version.cmx \
+    z.cmi \
+    z.cmx
 OCAMLDEPS=\
-    nums.cmxa \
+    zarith.cmxa \
     str.cmxa
 
 all: \
-     dependency_num \
+     dependency_zarith \
      erlang.cmi \
      erlang.cmx \
      main.cmi \
      main.cmx
-	$(OCAMLOPT) -o test $(OCAMLDEPS) erlang.cmx main.cmx -ccopt -L.
+	$(OCAMLOPT) -o tests $(OCAMLDEPS) erlang.cmx main.cmx -ccopt -L.
 
 clean:
-	rm -f test *.cmi *.cmx *.o \
-          dependency_num $(OCAMLDEPS_NUM)
-	cd external/num-1.1/src && $(MAKE) clean
+	rm -f tests *.cmi *.cmx *.o \
+          dependency_zarith $(OCAMLDEPS_ZARITH)
+	cd external/zarith-1.12 && $(MAKE) clean
 
-dependency_num:
-	test -f $(STDLIBDIR)/nums.cmxa || \
-    (cd external/num-1.1/src && \
-     $(MAKE) OCAMLC="$(OCAMLC)" \
-             OCAMLOPT="$(OCAMLOPT)" \
-             OCAMLDEP="$(OCAMLDEP)" \
-             OCAMLMKLIB="$(OCAMLMKLIB)" \
-             nums.cmxa libnums.a && \
-     cp $(OCAMLDEPS_NUM) ../../..)
+dependency_zarith:
+	(cd external/zarith-1.12 && \
+     ./configure && \
+     $(MAKE) && \
+     cp $(OCAMLDEPS_ZARITH) ../..)
 	touch $@
 
-%.cmi: %.mli
+erlang.cmi: lib/erlang.mli
 	$(OCAMLC) $(OCAMLFLAGS) -o $@ -c $<
 
-%.cmx: %.ml
+erlang.cmx: lib/erlang.ml
+	$(OCAMLOPT) $(OCAMLFLAGS) -o $@ -c $<
+
+main.cmi: test/main.mli
+	$(OCAMLC) $(OCAMLFLAGS) -o $@ -c $<
+
+main.cmx: test/main.ml
 	$(OCAMLOPT) $(OCAMLFLAGS) -o $@ -c $<
 
