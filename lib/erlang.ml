@@ -1555,6 +1555,7 @@ let test_decode_map () =
   assert (
     (term_ok (binary_to_term "\x83t\x00\x00\x00\x01s\x01aa\x01")) =
     OtpErlangMap (map1)) ;
+  (* only able to compare OtpErlangMap of size 1 due to being unordered *)
   let map2 = Hashtbl.create 1 in
   Hashtbl.add map2
     (OtpErlangBinaryBits (("\xA8", 6))) (OtpErlangBinary ("everything")) ;
