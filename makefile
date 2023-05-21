@@ -37,7 +37,7 @@ all: \
 clean:
 	rm -f tests *.cmi *.cmx *.o \
           dependency_zarith $(OCAMLDEPS_ZARITH)
-	cd external/zarith-1.12 && $(MAKE) clean
+	cd external/zarith-1.12 && $(MAKE) clean || exit 0
 
 dependency_zarith:
 	(cd external/zarith-1.12 && \
