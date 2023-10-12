@@ -3,4 +3,4 @@
 (package
  (name erlang)
  (depends
-  (zarith (>= 1.12))))
+  (zarith (>= 1.13))))

@@ -5,8 +5,8 @@ OCAMLC ?= ocamlc
 OCAMLOPT ?= ocamlopt
 OCAMLDEP ?= ocamldep
 OCAMLMKLIB ?= ocamlmklib
-OCAMLFLAGS = -safe-string -w @A
-STDLIBDIR = $(shell $(OCAMLC) -where)
+OCAMLFLAGS = -safe-string -w @A -I +str -I +unix
+OCAMLDEPS_ZARITH_VERSION = 1.13
 OCAMLDEPS_ZARITH = \
     big_int_Z.cmi \
     big_int_Z.cmx \
@@ -27,20 +27,27 @@ OCAMLDEPS=\
     str.cmxa
 
 all: \
+     dependency_native_code \
      dependency_zarith \
      erlang.cmi \
      erlang.cmx \
      main.cmi \
      main.cmx
-	$(OCAMLOPT) -o tests $(OCAMLDEPS) erlang.cmx main.cmx -ccopt -L.
+	$(OCAMLOPT) $(OCAMLFLAGS) -o tests $(OCAMLDEPS) \
+                erlang.cmx main.cmx -ccopt -L.
 
 clean:
-	cd external/zarith-1.12 && $(MAKE) clean || exit 0
+	cd external/zarith-$(OCAMLDEPS_ZARITH_VERSION) && $(MAKE) clean || exit 0
 	rm -f tests *.cmi *.cmx *.o \
+          dependency_native_code \
           dependency_zarith $(OCAMLDEPS_ZARITH)
 
+dependency_native_code: $(OCAMLOPT)
+	$(OCAMLOPT) -v
+	touch $@
+
 dependency_zarith:
-	(cd external/zarith-1.12 && \
+	(cd external/zarith-$(OCAMLDEPS_ZARITH_VERSION) && \
      ./configure && \
      $(MAKE) && \
      cp $(OCAMLDEPS_ZARITH) ../..)
