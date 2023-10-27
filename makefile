@@ -42,7 +42,7 @@ clean:
           dependency_native_code \
           dependency_zarith $(OCAMLDEPS_ZARITH)
 
-dependency_native_code: $(OCAMLOPT)
+dependency_native_code:
 	$(OCAMLOPT) -v
 	touch $@
 

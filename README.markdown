@@ -39,4 +39,3 @@ License
 -------
 
 MIT License
-
